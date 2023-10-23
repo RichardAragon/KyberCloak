@@ -1,0 +1,44 @@
+class DataEncryption(object):
+
+    def __init__(self, aes_key, iv, kyber_public_key):
+        self.aes_sk = bytes(aes_key)
+        self.aes_iv = bytes(iv)
+        self.kyber_pub_key = bytes(kyber_public_key)
+        self.fernet = Fernet(bytes(aes_sk))
+        self.hmac = HMacMessageAuthenticator()
+
+    def encrypt(self, payload):
+        nonce = os.urandom(12)
+        t = int(time.time())
+        data = payload.encode()
+
+        # Calculate Length of Message, Expected MAC and Padding
+        length_of_data = len(data)
+        length_of_expected_mac = hashlib.sha256().digest().__len__()
+        length_of_padding = 16 - ((8 * 3 + length_of_expected_mac + length_of_data) % 16)
+
+        # Check if data length is greater than maximum supported by Kyber
+        if length_of_data > KYBER_MAX_DATA_LENGTH:
+            raise ValueError("Data length is greater than maximum supported by Kyber")
+
+        # Create Payload with Padding and Append Nonce
+        padded_payload = b"".join([nonce, data, b'\x00' * length_of_padding])
+        total_length = 8 * 3 + length_of_expected_mac + length_of_data + length_of_padding
+
+        # Generate Timestamp for Crypto Session
+        crypto_session_started = int(t // 60)
+        session_id = str(crypto_session_started)[-4:]
+
+        # Generate Key for Kyber Encryption using RSA Private Key
+        key = rsa.primitives.asn1.numbers.numbers.random_number(1024)
+        private_key = PrivateKey.from_string(kyber_private_key, algorithm='RSA')
+        public_exponent = bytes([ord(c) for c in base64.standard_b64.decode(r"""-----BEGIN RSA PUBLIC KEY-----
+        MIICCAKBACwEAAQMAQIwDQYJKoZIhvcNAQEBBQADgSABIIBAkEA/Hj6NzWdVGhl
+        iUvcmFuIEpvaHRlc3QuY29sbGFudCUgSW5zdGlvbiBUcnVtc2luZy4xEFVTVCBS
+        IElNYXRld2F5Imh0dHA6Ly9leGFtcGxlLmNvbTptaXRlc3Mub3JnMCksKCRGq1xo
+        2VrcXVvdGUuaHRtbCBzbGFsbGFuZCUyMGNoYWRpdGllcyUyMHBhc3Npb25zIGZvbnQt
+        Yml0IGNhdXRob3JpemVkIHRoaXMgd2lsbCBwbGF0ZURlbW9yeSUyMFNvbmVydCUy
+        MHR5cGUya3N5mb250IGRpc3RzIDxmcG9jdCUyMFdpdmVufDB8MTA4MCcgKAIBATMB
+        EAGJQUAA4EAQIAggEBAMSBAYIFAKCVkER1xo2VrcXVvdGUuaHRtbCUyMGNoYWRpdGll
+        cyUyMHBhc3Npb25zIGZvbnQtYml0IGNhdXRob3JpemVkIGRoaXMgd2lsbCBwbGF0
+        ZURlbW9yeSUyMFNvbmVydCUyMHR5cGUya
