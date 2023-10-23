@@ -1,0 +1,178 @@
+# Global Variables (replace with your own values)
+KYBER_PUBLIC_KEY = b"" # Base64-encoded public key from Key Management System
+AES_SK = b"" # Secret key for symmetric encryption using AES
+AES_IV = b"" # Initialization vector for symmetric encryption using AES
+
+In order to receive messages securely over an unreliable channel, we need to have a mechanism that can authenticate and detect any tampering or unauthorized access to the transmitted data. To achieve this, we use HMAC construction based on SHA-256 hashing algorithm. We also add an initialization vector (IV) randomly generated at each invocation of the encryption process to prevent repeated IVs leading to potential security vulnerabilities. ```python
+hmac = hashlib.new("SHA-256", "HMAC for message integrity")
+...
+encrypted += hmac.update(nonce + encrypted).digest()
+return encrypted
+
+class HMacMessageAuthenticator:
+    def __init__(self):
+        self._key = bytes(secret_key)
+    def update(self, msg):
+        self._hasher.update(msg)
+    def finalize(self):
+        self._output = self._hasher.digest()
+    def reset(self):
+        self._hasher = hashlib.new("SHA-256")
+    @property
+    def result(self):
+        return binascii.hexlify(self._output).decode("UTF-8").lower().rjust(32, '0').upper()
+
+class MessageEncrypter:
+    def __init__(self, kyber_priv_key, aes_sk, aes_iv):
+        ...
+
+    ...
+
+    def encrypt(self, data):
+        nonce = os.urandom(12)
+        cipher = Fernet(bytes(AES_SK))
+        encrypted = cipher.encrypt(data)
+        iv = os.urandom(12)
+        encrypted = iv + encrypted
+        mac = Mac(alg='KEM-256', key=bytes(kyber_priv_key)).update(encrypted).finalize()
+        output = bytes([len(str(int(time.time())))] + [ord(x) for x in str(int(time.time()))]] + nonce + encrypted + bytearray((len(str(len(encrypted))) + len(str(len(mac)))) * 2) + struct.pack("<QLL", len(encrypted), len(mac), len(data)) + mac)
+        return output
+
+class MessageReceiver:
+    def __init__(self, kyber_pub_key, aes_sk, aes_iv):
+        ...
+
+    ...
+
+    def decrypt(self, ciphertext):
+        timestamp, pad, nonce, encrypted, enc_length, mac_length, data_length = \
+                struct.unpack('<QQLLL', ciphertext[-19:-7])
+        current_time = int(time.time())
+        time_diff = abs(current_time - (timestamp & 0xFFFFFFFF)) / 1000
+        
+        if time_diff > TIMEOUT_IN_SECONDS:
+            raise TimeoutError("Received message too old!")
+        elif time_diff < ACCEPTABLE_TIME_DIFFERENCE:
+class MessageReceiver:
+    def __init__(self, kyber_pub_key, aes_sk, aes_iv):
+        self.aes_sk = bytes(aes_sk)
+        self.aes_iv = bytes(aes_iv)
+        self.kyber_pub_key = bytes(kyber_public_key)
+        self.fernet = Fernet(bytes(aes_sk))
+        self.hmac = HMacMessageAuthenticator()
+    
+    def decrypt(self, ciphertext):
+        timestamp, pad, nonce, encrypted, enc_length, mac_length, data_length = \
+                struct.unpack('<QQLLL', ciphertext[-19:-7])
+        current_time = int(time.time())
+        time_diff = abs(current_time - (timestamp & 0xFFFFFFFF)) / 1000
+        
+        if time_diff > TIMEOUT_IN_SECONDS:
+            raise TimeoutError("Received message too old!")
+        elif time_diff < ACCEPTABLE_TIME_DIFFERENCE:
+            nonce = ciphertext[:12]
+            encrypted = ciphertext[12+pad:ciphertext[12+pad+enc_length]]
+            expected_mac = ciphertext[ciphertext[12+pad+enc_length]:ciphertext[12+pad+enc_length+mac_length]]
+            
+            # Verify MAC
+            sender_public_key = PublicKey.from_string(base64.b64decode(kyber_public_key), algorithm="RSASSA-PKCS1-OAEP")
+            message = bytes([len(str(int(time.time())))), ] + nonce + encrypted + bytearray((len(str(len(encrypted))) + len(str(len(expected_mac)))) * 2) + struct.pack("<QQL", len(encrypted), len(expected_mac), len(ciphertext[:ciphertext.index(pad)-1])) + bytes([0]*padding)
+            signature = Signature.sign(message, private_key=PrivateKey.from_string(kyber_private_key, algorithm="RSASSA-PSS"), salt=None, hasher=hashlib.sha256(), backend=default_backend())
+            
+            is_verified = sender_public_key.verify(signature, bytes(expected_mac))
+            
+            if not is_verified:
+                logger.error('Invalid MAC')
+                return None
+            
+            cipher_dec = self.fernet.decrypt(encrypted)
+            payload = cipher_dec[pad:].split(b"\x00\x00\x00\x00")[0]
+            
+            self.hmac.reset()
+            self.hmac.update(payload)
+            calculated_hmac = self.hmac.result
+            
+            if not bytes(calculated_hmac) == bytes(expected_mac):
+                logger.warning('Calculated HMAC does not match received one')
+                return None
+            
+            return payload
+        else:
+            logger.debug(f"{time_diff} seconds have passed since sending time.")
+            
+    def verify(self, payload):
+        payload_checksum = bytes([0]*padding)
+        payload_without_checksum = payload[:-len(payload_checksum)]
+        mac = HMAC(hashlib.sha256(), self.kyber_priv_key).update(payload_without_checksum).digest()
+        checksum = padding*4 + len(struct.pack(">L", len(mac))) + len(struct.pack(">L", len(payload_without_checksum))) + len(struct.pack(">L", len(payload))) + len(binascii.hexlify(os.urandom(12))+binascii.hexlify(mac)+binascii.hexlify(struct.pack(">L", len(payload)))+binascii.hexlify(struct.pack(">L", len(mac)))+binascii.hexlify(struct.pack(">L", len(payload_without_checksum)))+"00")
+        return payload_with_checksum := bytes
+class DataEncryption(object):
+    
+    def __init__(self, aes_key, iv, kyber_public_key):
+        self.aes_sk = bytes(aes_key)
+        self.aes_iv = bytes(iv)
+        self.kyber_pub_key = bytes(kyber_public_key)
+        self.fernet = Fernet(bytes(aes_sk))
+        self.hmac = HMacMessageAuthenticator()
+    
+    def encrypt(self, payload):
+        nonce = os.urandom(12)
+        t = int(time.time())
+        data = payload.encode()
+        
+        # Calculate Length of Message, Expected MAC and Padding
+        length_of_data = len(data)
+        length_of_expected_mac = hashlib.sha256().digest().__len__()
+        length_of_padding = 16 - ((8*3 + length_of_expected_mac + length_of_data) % 16)
+        
+        # Create Payload with Padding and Append Nonce
+        padded_payload = b"".join([nonce, data, b'\x00'*length_of_padding])
+        total_length = 8*3 + length_of_expected_mac + length_of_data + length_of_padding
+        
+        # Generate Timestamp for Crypto Session
+        crypto_session_started = int(t // 60)
+        session_id = str(crypto_session_started)[-4:]
+        
+        # Generate Key for Kyber Encryption using RSA Private Key
+        key = rsa.primitives.asn1.numbers.numbers.random_number(1024)
+        private_key = PrivateKey.from_string(kyber_private_key, algorithm='RSA')
+        public_exponent = bytes([ord(c) for c in base64.standard_b64.decode(r"""-----BEGIN RSA PUBLIC KEY-----
+          MIICCAKBACwEAAQMAQIwDQYJKoZIhvcNAQEBBQADgSABIIBAkEA/Hj6NzWdVGhl
+          iUvcmFuIEpvaHRlc3QuY29sbGFudCUgSW5zdGlvbiBUcnVtc2luZy4xEFVTVCBS
+          IElNYXRld2F5Imh0dHA6Ly9leGFtcGxlLmNvbTptaXRlc3Mub3JnMCksKCRGq1xo
+          2VrcXVvdGUuaHRtbCBzbGFsbGFuZCUyMGNoYWRpdGllcyUyMHBhc3Npb25zIGZvbnQt
+          Yml0IGNhdXRob3JpemVkIHRoaXMgd2lsbCBwbGF0ZURlbW9yeSUyMFNvbmVydCUy
+          MHR5cGUya3N5mb250IGRpc3RzIDxmcG9jdCUyMFdpdmVufDB8MTA4MCcgKAIBATMB
+          EAGJQUAA4EAQIAggEBAMSBAYIFAKCVkER1xo2VrcXVvdGUuaHRtbCUyMGNoYWRpdGll
+          cyUyMHBhc3Npb25zIGZvbnQtYml0IGNhdXRob3JpemVkIGRoaXMgd2lsbCBwbGF0
+          ZURlbW9yeSUyMFNvbmVydCUyMHR5cGUya3N5mb250IGRpc3RzIDxmcG9jdCUy
+          MFdpdmVufDB8MTA4MCcgKAIBAzCCBzgEBAMEGAECGCqGAQQBgUKEwiNb3Vyc2UwIDEw
+          DwIBADCBiqCCAWgEFhBNMEwcBAoMDgsGECAwEAAQMBAoMMCIHCgsEEGQBxoAmCCAsGIBAgMB
+          AAGEAdASigECAwEChQCE
+def sign_message(timestamp, payload):
+    h = hashlib.sha256()
+    h.update(str(timestamp).encode('utf-8'))
+    h.update(payload)
+    digest = h.hexdigest()
+    signature = signing.new(signing.PKCS1v15(), private_key=PrivateKey.from_string(kyber_private_key, 'RSA'), hasher=hashlib.sha256()).sign(int.from_bytes(bytes.fromhex(digest), byteorder='big', signed=False)).to_der_encoded_point().to_bytes()
+    return (signature, digest)
+
+# Add function call to main program after calculating nonce and creating padding
+total_length = 8 * 3 + length_of_expected_mac + length_of_data + length_of_padding
+crypto_session_started = int(t // 60)
+session_id = str(crypto_session_started)[-4:]
+(signature, digest) = sign_message(crypto_session_started, padded_payload)
+
+# Define new method to create final payload with appended nonce, padding, signature, and expected mac
+final_payload = [int.from_bytes(nonce, byteorder='big', signed=True),
+                  length_of_expected_mac,
+                  int.from_bytes((total_length//8)*8, byteorder='big', signed=True),
+                  signature,
+                  digest]
+
+# Convert list into one byte string
+final_byte_array = b''
+for byte in final_payload:
+    final_byte_array += struct.pack(">Q", byte)
+
+return final_byte_array
