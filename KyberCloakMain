@@ -1,0 +1,100 @@
+def generate_keys():
+    # Generate a random IV for AES GCM mode
+    iv = Random.new().read(AES.block_size)
+    
+    # Generate the AES key material using HKDF-SHA256
+    info = b"aead_gcm"
+    prk = sha256(os.urandom(32)).digest()
+    hkdf = HMAC(sha256(), prk).update(info).final()
+    key_material = os.urandom(AES.KEY_LENGTH)
+    sk = hkdf.update(key_material).final()
+    ak = sk[8:16]
+    dk = sk[16:]
+    return (dk, iv)
+pip install pycryptodome[extra]
+pip install tink==0.9.0
+from cryptography.fernet import Fernet
+import base64
+
+...
+
+class MessageEncrypter:
+    def __init__(self, kyber_pub_key, aes_sk, aes_iv):
+        self._kyber_pub_key = kyber_pub_key
+        self._aes_sk = bytes(aes_sk)
+        self._aes_iv = bytes(aes_iv)
+        
+    ...
+
+    def encrypt(self, plaintext):
+        nonce, ciphertext, tag = encrypt_and_authenticate(plaintext)
+        encoded_nonce = base64.urlsafe_b64encode(nonce)
+        encoded_ciphertext = base64.urlsafe_b64encode(ciphertext)
+        encoded_tag = base64.urlsafe_b64encode(tag)
+        return f"{encoded_nonce}{encoded_ciphertext}{encoded_tag}".encode("utf-8")
+
+def encrypt_and_authenticate(data):
+    cipher = Fernet(bytes(aes_sk))
+    nonce = os.urandom(12)
+    encrypted, enc_tag = cipher.encrypt_and_decompose(data, None, nonce, True)
+    return nonce, encrypted, enc_tag
+
+...
+
+class MessageDecrypter:
+    def __init__(self, kyber_prv_key, aes_sk, aes_iv):
+        ...
+
+    ...
+
+    def decrypt(self, ciphertext):
+        nonce = base64.urlsafe_b64decode(ciphertext[:base64.urlsafe_b64encode(os.urandom(12)).find(b'=')])
+        ciphertext, tag = base64.urlsafe_b64decode(ciphertext[base64.urlsafe_b64encode(os.urandom(12)).find(b'=')+1:])
+        encoded_tag = base64.urlsafe_b64encode(tag)
+        if not verify_tag(ciphertext, encoded_tag):
+            raise ValueError("Invalid message authentication.")
+        aes_sk = bytes(aes_sk)
+        aes_iv = bytes(aes_iv)
+        fernet = Fernet(aes_sk)
+        plaintext = fernet.decrypt(ciphertext)[unicode_escape]
+        kyber_prv_key = bytes(kyber_prv_key)
+        kyber_public_key = bytes(kyber_pub_key)
+        kyber = Kyber512()
+        kyber.set_private_key(PrivateKey.deserialize_der(kyber_prv_key))
+from Crypto.AuthBIO import gcm_auth
+import hashlib
+
+...
+
+def verify_tag(ciphertext, encoded_tag):
+    auth = gcm_auth(hashlib.sha256, 128)
+    _, _, tag = gcm_auth.unpad(auth, bytes(aes_sk), bytes(aes_iv), bytes(ciphertext), len(ciphertext))
+    decoded_tag = hashlib.sha256(base64.urlsafe_b64decode(encoded_tag)).hexdigest()[::-1].upper()
+    if decoded_tag != str(binascii.unhexlify(' '.join([f"{x:02X}" for x in list(reversed(tag))]))).strip():
+        return False
+    else:
+        return True
+
+...
+
+class MessageDecrypter:
+    def __init__(self, kyber_prv_key, aes_sk, aes_iv):
+        ...
+
+    ...
+
+    def decrypt(self, ciphertext):
+        nonce = base64.urlsafe_b64decode(ciphertext[:base64.urlsafe_b64encode(os.urandom(12)).find(b'='')])
+        ciphertext, tag = base64.urlsafe_b64decode(ciphertext[base64.urlsafe_b64encode(os.urandom(12)).find(b'='')+1:])
+        encoded_tag = base64.urlsafe_b64encode(tag)
+        if not verify_tag(ciphertext, encoded_tag):
+            raise ValueError("Invalid message authentication.")
+        aes_sk = bytes(aes_sk)
+        aes_iv = bytes(aes_iv)
+        fernet = Fernet(aes_sk)
+        plaintext = fernet.decrypt(ciphertext)[unicode_escape]
+        kyber_prv_key = bytes(kyber_prv_key)
+        kyber_public_key = bytes(kyber_pub_key)
+        kyber = Kyber512()
+        kyber.set_private_key(PrivateKey.deserialize_der(kyber_prv_key))
+        ...
