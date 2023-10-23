@@ -1,0 +1,64 @@
+import os
+import struct
+import time
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.backends import default_backend
+
+class Encryptor:
+    
+    def __init__(self, kyber_priv_key, aes_key, aes_iv):
+        self.kyber_priv_key = serialization.load_pem_private_key(kyber_priv_key, password=None, backend=default_backend())
+        self.aes_key = aes_key
+        self.aes_iv = aes_iv
+        
+    def encrypt(self, plaintext):
+        # Generate nonce and AES encrypt message
+        nonce = os.urandom(12)
+        aes_cipher = AES.new(self.aes_key, AES.MODE_CTR, nonce=self.aes_iv)
+        ciphertext = aes_cipher.encrypt(plaintext)
+        
+        # Sign the ciphertext using Kyber private key
+        signature = self.kyber_priv_key.sign(
+            ciphertext,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        
+        # Construct final payload
+        payload = nonce + ciphertext + signature
+        
+        return payload
+        
+class Decryptor:
+
+    def __init__(self, kyber_pub_key, aes_key, aes_iv):
+        self.kyber_pub_key = serialization.load_pem_public_key(kyber_pub_key, backend=default_backend())
+        self.aes_key = aes_key
+        self.aes_iv = aes_iv
+
+    def decrypt(self, payload):
+        # Extract nonce, ciphertext and signature
+        nonce = payload[:12]
+        ciphertext = payload[12:-256]
+        signature = payload[-256:]
+        
+        # Verify signature
+        self.kyber_pub_key.verify(
+            signature,
+            ciphertext,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        
+        # Decrypt ciphertext
+        aes_cipher = AES.new(self.aes_key, AES.MODE_CTR, nonce=self.aes_iv)
+        plaintext = aes_cipher.decrypt(ciphertext)
+        
+        return plaintext
